@@ -5,6 +5,11 @@ vim.pack.add { 'https://github.com/mfussenegger/nvim-lint' }
 local lint = require 'lint'
 lint.linters_by_ft = {
   markdown = { 'markdownlint' },
+  -- Oxlint runs as an LSP so its project-local binary can be resolved by
+  -- nvim-lspconfig. Do not also run it here, which would duplicate diagnostics.
+  python = { 'ruff' },
+  go = { 'golangcilint' },
+  php = { 'phpstan' },
 }
 
 -- To allow other plugins to add linters to require('lint').linters_by_ft,

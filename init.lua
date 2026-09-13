@@ -733,10 +733,28 @@ do
   --  See `:help lsp-config` for information about keys and how to configure
   ---@type table<string, vim.lsp.Config>
   local servers = {
-    -- clangd = {},
-    -- gopls = {},
-    -- pyright = {},
-    -- tsc = {},
+    -- JavaScript and TypeScript
+    vtsls = {},
+    -- Oxlint is installed per JavaScript/TypeScript project so its version and
+    -- configuration stay aligned with the project being edited.
+    oxlint = {
+      -- Do not fall back to a global executable: only start Oxlint when the
+      -- current project has installed its own copy.
+      root_dir = function(bufnr, on_dir)
+        local root = vim.fs.root(bufnr, { 'oxlint.config.ts', '.oxlintrc.json', '.oxlintrc.jsonc', 'package.json', '.git' })
+        if root and vim.fn.executable(vim.fs.joinpath(root, 'node_modules/.bin/oxlint')) == 1 then on_dir(root) end
+      end,
+    },
+
+    -- PHP, Go, and Python
+    intelephense = {},
+    gopls = {},
+    pyright = {},
+
+    -- React-adjacent web formats
+    html = {},
+    cssls = {},
+    jsonls = {},
     --
     -- Some languages (like rust) have entire language plugins that can be useful:
     --    https://github.com/mrcjkb/rustaceanvim
@@ -794,14 +812,31 @@ do
     automatic_enable = false, -- Change this to true if you want to automatically enable servers that are installed manually (e.g. via :Mason / :MasonInstall)
   }
 
-  -- Ensure the servers and tools above are installed
+  -- Ensure the Mason-managed servers and tools above are installed. Oxfmt and
+  -- Oxlint are intentionally project-local npm dependencies; nvim-lspconfig
+  -- and Conform resolve those binaries from each project's node_modules.
   --
   -- To check the current status of installed tools and/or manually install
   -- other tools, you can run
   --    :Mason
   --
   -- You can press `g?` for help in this menu.
-  local ensure_installed = vim.tbl_keys(servers or {})
+  local ensure_installed = {
+    'lua_ls',
+    'stylua',
+    'vtsls',
+    'intelephense',
+    'gopls',
+    'pyright',
+    'html-lsp',
+    'css-lsp',
+    'json-lsp',
+    'gofumpt',
+    'golangci-lint',
+    'php-cs-fixer',
+    'phpstan',
+    'ruff',
+  }
   vim.list_extend(ensure_installed, {
     'markdownlint',
   })
@@ -824,13 +859,19 @@ do
   require('conform').setup {
     notify_on_error = false,
     format_on_save = function(bufnr)
-      -- You can specify filetypes to autoformat on save here:
       local enabled_filetypes = {
-        -- lua = true,
-        -- python = true,
+        javascript = true,
+        javascriptreact = true,
+        typescript = true,
+        typescriptreact = true,
+        json = true,
+        jsonc = true,
+        python = true,
+        go = true,
+        php = true,
       }
       if enabled_filetypes[vim.bo[bufnr].filetype] then
-        return { timeout_ms = 500 }
+        return { timeout_ms = 1000 }
       else
         return nil
       end
@@ -838,14 +879,37 @@ do
     default_format_opts = {
       lsp_format = 'fallback', -- Use external formatters if configured below, otherwise use LSP formatting. Set to `false` to disable LSP formatting entirely.
     },
+    formatters = {
+      -- Oxfmt is a project dependency, not a global executable. Conform's
+      -- built-in formatter falls back to a bare `oxfmt` command, so guard it
+      -- here to avoid silently formatting with an unrelated global version.
+      oxfmt = {
+        condition = function(_, ctx)
+          local root = vim.fs.root(ctx.dirname, {
+            '.oxfmtrc.json',
+            '.oxfmtrc.jsonc',
+            'oxfmt.config.ts',
+            'vite.config.ts',
+            'vite.config.js',
+            'package.json',
+          })
+          return root ~= nil and vim.fn.executable(vim.fs.joinpath(root, 'node_modules/.bin/oxfmt')) == 1
+        end,
+      },
+    },
     -- You can also specify external formatters in here.
     formatters_by_ft = {
-      -- rust = { 'rustfmt' },
-      -- Conform can also run multiple formatters sequentially
-      -- python = { "isort", "black" },
-      --
-      -- You can use 'stop_after_first' to run the first available formatter from the list
-      -- javascript = { "prettierd", "prettier", stop_after_first = true },
+      -- Do not fall back to a language-server formatter for these filetypes;
+      -- Oxfmt must be present in the project when it is selected.
+      javascript = { 'oxfmt', lsp_format = 'never' },
+      javascriptreact = { 'oxfmt', lsp_format = 'never' },
+      typescript = { 'oxfmt', lsp_format = 'never' },
+      typescriptreact = { 'oxfmt', lsp_format = 'never' },
+      json = { 'oxfmt', lsp_format = 'never' },
+      jsonc = { 'oxfmt', lsp_format = 'never' },
+      python = { 'ruff_format' },
+      go = { 'gofumpt' },
+      php = { 'php_cs_fixer' },
     },
   }
 
